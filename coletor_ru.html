@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Coletor RU — Leitor QR + Catraca Livre</title>
+  <style>
+    :root {
+      --bg: #0f172a; --card: #1e293b; --text: #f8fafc; --muted: #94a3b8;
+      --green: #10b981; --blue: #3b82f6; --amber: #f59e0b; --red: #ef4444; --purple: #8b5cf6;
+    }
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body { margin: 0; padding: 10px; background: var(--bg); color: var(--text); user-select: none; }
+    h1 { font-size: 1.05rem; text-align: center; margin: 2px 0 8px; }
+    .session-bar {
+      background: #020617; border: 1px solid #334155; border-radius: 10px;
+      padding: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;
+    }
+    .timer-display { font-family: monospace; font-size: 1.25rem; font-weight: 800; color: var(--amber); }
+    .session-btn {
+      padding: 8px 12px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.82rem;
+    }
+    .tabs { display: flex; gap: 6px; margin-bottom: 10px; }
+    .tab-btn {
+      flex: 1; padding: 10px 6px; border: none; border-radius: 8px;
+      background: var(--card); color: var(--muted); font-weight: 700; font-size: 0.8rem; cursor: pointer;
+    }
+    .tab-btn.active { background: var(--blue); color: white; }
+    .card { background: var(--card); padding: 12px; border-radius: 12px; margin-bottom: 10px; }
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center; margin-bottom: 10px; }
+    .stat-box { background: rgba(255,255,255,0.05); padding: 8px; border-radius: 8px; }
+    .stat-val { font-size: 1.4rem; font-weight: 800; color: var(--green); }
+    .stat-label { font-size: 0.72rem; color: var(--muted); }
+    .big-btn {
+      width: 100%; padding: 22px 12px; border: none; border-radius: 14px;
+      font-size: 1.15rem; font-weight: 800; color: white; cursor: pointer;
+      margin-bottom: 8px; box-shadow: 0 5px 12px rgba(0,0,0,0.3);
+    }
+    .big-btn:active { transform: scale(0.97); }
+    .big-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+    .qr-subgrid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+    .qr-btn {
+      padding: 14px 6px; border: none; border-radius: 10px; font-size: 0.8rem;
+      font-weight: 800; color: white; cursor: pointer; text-align: center;
+    }
+    .qr-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    .btn-green { background: var(--green); }
+    .btn-amber { background: var(--amber); color: #000; }
+    .btn-blue { background: var(--blue); }
+    .btn-purple { background: var(--purple); }
+    .btn-red { background: var(--red); color: white; }
+    .row-btns { display: flex; gap: 6px; margin-bottom: 8px; }
+    .row-btns button { flex: 1; padding: 11px; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; font-size: 0.85rem; }
+    input, select {
+      width: 100%; padding: 9px; border-radius: 8px; border: 1px solid #334155;
+      background: #0f172a; color: white; font-size: 0.95rem; margin-top: 4px;
+    }
+    .log-list { max-height: 135px; overflow-y: auto; font-family: monospace; font-size: 0.75rem; color: var(--muted); }
+    .log-item { padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; }
+    .step-badge { font-size: 0.75rem; color: var(--amber); font-weight: 700; margin: 4px 0; text-transform: uppercase; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+
+  <h1>📲 Coletor RU — Leitor QR & Catraca Livre</h1>
+
+  <!-- BARRA DE SESSÃO (1 HORA) -->
+  <div class="session-bar">
+    <div>
+      <div style="font-size:0.7rem; color:var(--muted);" id="session-status-label">SESSÃO NÃO INICIADA</div>
+      <div class="timer-display" id="session-timer">00:00:00</div>
+    </div>
+    <div style="display:flex; gap:6px;">
+      <button id="btn-start-session" class="session-btn btn-green" onclick="iniciarSessao()">▶️ Iniciar 1h</button>
+      <button id="btn-end-session" class="session-btn btn-red" onclick="encerrarSessao()" disabled>⏹️ Fim</button>
+    </div>
+  </div>
+
+  <!-- ABAS -->
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('chegada')">1. FIM DA FILA</button>
+    <button class="tab-btn" onclick="switchTab('catraca')">2. LEITOR QR / SAÍDA</button>
+    <button class="tab-btn" onclick="switchTab('ocorrencias')">3. OCORRÊNCIAS</button>
+  </div>
+
+  <!-- ABA 1: FIM DA FILA -->
+  <div id="tab-chegada">
+    <div class="card" style="display:flex; gap:10px; align-items:center;">
+      <div style="flex:1;">
+        <label style="font-size:0.78rem; color:var(--muted);">Pessoas já na fila em t=0 (N₀):</label>
+        <input type="number" id="n0_input" value="0" min="0" onchange="atualizarN0()">
+      </div>
+      <div style="flex:1;">
+        <label style="font-size:0.78rem; color:var(--muted);">Observador / Posto:</label>
+        <input type="text" id="obs_posto" value="Fila_Posto1" onchange="saveState()">
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-val" id="count-chegadas">0</div>
+        <div class="stat-label">Chegadas na Fila (FIFO)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="last-chegada">--:--:--</div>
+        <div class="stat-label">Última Chegada</div>
+      </div>
+    </div>
+
+    <button class="big-btn btn-green" onclick="registrarChegada('Individual')">
+      ➕ CHEGOU ALUNO NO FIM DA FILA
+    </button>
+
+    <div class="row-btns">
+      <button style="background:#334155; color:white;" onclick="registrarLote(2)">👥 +2 Juntos</button>
+      <button style="background:#334155; color:white;" onclick="registrarLote(3)">👥 +3 Juntos</button>
+      <button style="background:#64748b; color:white;" onclick="desfazerChegada()">↩️ Desfazer</button>
+    </div>
+
+    <div class="card">
+      <div style="font-size:0.78rem; font-weight:700; margin-bottom:4px;">Últimas Chegadas:</div>
+      <div class="log-list" id="log-chegadas"></div>
+    </div>
+
+    <div class="row-btns">
+      <button class="btn-blue" style="color:white;" onclick="exportCSV('chegadas')">📥 CSV Chegadas</button>
+      <button class="btn-red" onclick="limparDados('chegadas')">🗑️ Limpar Aba</button>
+    </div>
+  </div>
+
+  <!-- ABA 2: LEITOR QR + CATRACA LIVRE (2 TOQUES DIRETO) -->
+  <div id="tab-catraca" class="hidden">
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-val" id="count-catraca">0</div>
+        <div class="stat-label">Atendimentos Concluídos</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="status-catraca" style="color:var(--amber);">LIVRE</div>
+        <div class="stat-label" id="sub-status-catraca">Aguardando no leitor</div>
+      </div>
+    </div>
+
+    <div class="step-badge">TOQUE 1: Aluno parou na frente do Leitor QR</div>
+    <button id="btn-inicio-qr" class="big-btn btn-amber" onclick="iniciarLeituraQR()">
+      1️⃣ CHEGOU NO LEITOR DE QR CODE (Início)
+    </button>
+
+    <div class="step-badge">TOQUE 2: Leu o QR e passou pela catraca livre (Fim)</div>
+    <button class="big-btn btn-green fim-btn" onclick="finalizarAtendimento('QR_Rapido', true)" disabled>
+      2️⃣ ✅ PASSOU DIRETO (QR Rápido + Catraca)
+    </button>
+
+    <div style="font-size:0.75rem; color:var(--muted); margin-bottom:4px; text-align:center;">
+      Ou toque abaixo se houve demora/erro antes de sair:
+    </div>
+    <div class="qr-subgrid">
+      <button class="qr-btn btn-purple fim-btn" onclick="finalizarAtendimento('Abriu_App_ou_Net', true)" disabled>
+        📱 Demorou<br><small>(Abriu App/4G)</small>
+      </button>
+      <button class="qr-btn btn-blue fim-btn" onclick="finalizarAtendimento('Brilho_ou_Camera', true)" disabled>
+        🔆 Demorou<br><small>(Brilho/Foco)</small>
+      </button>
+      <button class="qr-btn btn-red fim-btn" onclick="finalizarAtendimento('Erro_Saldo_Recusado', false)" disabled>
+        ❌ Recusado<br><small>(Não entrou)</small>
+      </button>
+    </div>
+
+    <div class="row-btns">
+      <button style="background:#64748b; color:white;" onclick="desfazerCatraca()">↩️ Cancelar / Desfazer Último</button>
+    </div>
+
+    <div class="card">
+      <div style="font-size:0.78rem; font-weight:700; margin-bottom:4px;">Últimos Registos no Leitor/Catraca:</div>
+      <div class="log-list" id="log-catraca"></div>
+    </div>
+
+    <div class="row-btns">
+      <button class="btn-blue" style="color:white;" onclick="exportCSV('catraca')">📥 CSV Catraca</button>
+      <button class="btn-red" onclick="limparDados('catraca')">🗑️ Limpar Aba</button>
+    </div>
+  </div>
+
+  <!-- ABA 3: OCORRÊNCIAS DE CAMPO -->
+  <div id="tab-ocorrencias" class="hidden">
+    <div class="card">
+      <label style="font-size:0.8rem; color:var(--muted);">Tipo de Ocorrência / Quebra de FIFO:</label>
+      <select id="tipo_ocorrencia">
+        <option value="Desistencia_Fila">🚶 Aluno desistiu e saiu da fila (Δ = -1)</option>
+        <option value="Furou_Fila">⚠️ Aluno entrou no meio da fila (Δ = +1)</option>
+        <option value="Queda_Internet_Sistema">🌐 Queda de Wi-Fi / Sistema do RU lento</option>
+        <option value="Leitor_Travado">🛑 Leitor de QR Code travou / reiniciou</option>
+        <option value="Observacao_Geral">📝 Outra observação de campo</option>
+      </select>
+
+      <label style="font-size:0.8rem; color:var(--muted); display:block; margin-top:8px;">Impacto no tamanho da fila (Δ pessoas):</label>
+      <input type="number" id="delta_fila" value="0" min="-20" max="20">
+
+      <label style="font-size:0.8rem; color:var(--muted); display:block; margin-top:8px;">Detalhe:</label>
+      <input type="text" id="detalhe_ocorrencia" placeholder="Ex: Aluno desistiu no meio da fila">
+
+      <button class="big-btn btn-amber" style="margin-top:12px; padding:14px; font-size:1rem;" onclick="registrarOcorrencia()">
+        📌 Registar Ocorrência
+      </button>
+    </div>
+
+    <div class="card">
+      <div style="font-size:0.78rem; font-weight:700; margin-bottom:4px;">Ocorrências (<span id="count-ocorrencias">0</span>):</div>
+      <div class="log-list" id="log-ocorrencias"></div>
+    </div>
+
+    <div class="row-btns">
+      <button class="btn-blue" style="color:white;" onclick="exportCSV('ocorrencias')">📥 CSV Ocorrências</button>
+      <button class="btn-purple" style="color:white;" onclick="exportCSVPareadoLocal()">🔗 CSV Pareado</button>
+    </div>
+    <div class="row-btns">
+      <button class="btn-red" onclick="limparDados('ocorrencias')">🗑️ Limpar Ocorrências</button>
+      <button class="btn-red" style="background:#7f1d1d;" onclick="limparDados('tudo')">⚠️ Reset Geral</button>
+    </div>
+  </div>
+
+<script>
+  let state = JSON.parse(localStorage.getItem('ru_state_v4') || 'null') || {
+    sessao_inicio_ms: null,
+    sessao_fim_ms: null,
+    n0: 0,
+    posto: 'Fila_Posto1',
+    next_id_chegada: 1,
+    next_id_catraca: 1,
+    next_id_ocorrencia: 1,
+    atendimento_em_curso_ms: null,
+    chegadas: [],
+    catraca: [],
+    ocorrencias: []
+  };
+
+  document.getElementById('n0_input').value = state.n0;
+  document.getElementById('obs_posto').value = state.posto || 'Fila_Posto1';
+
+  function formatTime(ms) {
+    if (!ms) return '--:--:--';
+    const d = new Date(ms);
+    return d.toTimeString().split(' ')[0] + '.' + String(d.getMilliseconds()).padStart(3, '0');
+  }
+
+  function formatDuration(ms) {
+    const totalSec = Math.max(0, Math.floor(ms / 1000));
+    const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+    const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+    const s = String(totalSec % 60).padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  function saveState() {
+    state.n0 = Math.max(0, parseInt(document.getElementById('n0_input').value || 0));
+    state.posto = document.getElementById('obs_posto').value || 'Posto1';
+    localStorage.setItem('ru_state_v4', JSON.stringify(state));
+    renderUI();
+  }
+
+  function atualizarN0() {
+    const val = parseInt(document.getElementById('n0_input').value);
+    if (isNaN(val) || val < 0) {
+      alert('N₀ deve ser 0 ou maior.');
+      document.getElementById('n0_input').value = state.n0;
+      return;
+    }
+    saveState();
+  }
+
+  function iniciarSessao() {
+    if (state.sessao_inicio_ms && !state.sessao_fim_ms) {
+      if (!confirm('Reiniciar o cronómetro de 1 hora?')) return;
+    }
+    state.sessao_inicio_ms = Date.now();
+    state.sessao_fim_ms = null;
+    saveState();
+  }
+
+  function encerrarSessao() {
+    if (!state.sessao_inicio_ms) return;
+    if (!confirm('Encerrar oficialmente a medição de 1 hora?')) return;
+    state.sessao_fim_ms = Date.now();
+    saveState();
+  }
+
+  setInterval(() => {
+    const timerEl = document.getElementById('session-timer');
+    const labelEl = document.getElementById('session-status-label');
+    const btnEnd = document.getElementById('btn-end-session');
+
+    if (!state.sessao_inicio_ms) {
+      timerEl.innerText = '00:00:00';
+      labelEl.innerText = 'SESSÃO AGUARDANDO INÍCIO';
+      btnEnd.disabled = true;
+    } else if (state.sessao_fim_ms) {
+      timerEl.innerText = formatDuration(state.sessao_fim_ms - state.sessao_inicio_ms);
+      labelEl.innerText = `CONCLUÍDA`;
+      btnEnd.disabled = true;
+    } else {
+      timerEl.innerText = formatDuration(Date.now() - state.sessao_inicio_ms);
+      labelEl.innerText = `EM CURSO (Início: ${formatTime(state.sessao_inicio_ms).split('.')[0]})`;
+      btnEnd.disabled = false;
+    }
+
+    if (state.atendimento_em_curso_ms) {
+      const decCat = ((Date.now() - state.atendimento_em_curso_ms) / 1000).toFixed(1);
+      document.getElementById('sub-status-catraca').innerText = `Lendo QR há ${decCat}s...`;
+    }
+  }, 200);
+
+  function switchTab(tab) {
+    ['chegada', 'catraca', 'ocorrencias'].forEach((t, idx) => {
+      document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== tab);
+      document.querySelectorAll('.tab-btn')[idx].classList.toggle('active', t === tab);
+    });
+  }
+
+  function registrarChegada(obs = 'Individual') {
+    const now = Date.now();
+    if (!state.sessao_inicio_ms) state.sessao_inicio_ms = now;
+    state.chegadas.push({
+      id_unico: state.next_id_chegada++,
+      ordem_fifo: state.chegadas.length + 1,
+      horario_chegada_iso: new Date(now).toISOString(),
+      horario_local: formatTime(now),
+      epoch_ms: now,
+      n0_inicial: state.n0,
+      sessao_inicio_ms: state.sessao_inicio_ms,
+      sessao_fim_ms: state.sessao_fim_ms || '',
+      obs: obs
+    });
+    if (navigator.vibrate) navigator.vibrate(40);
+    saveState();
+  }
+
+  function registrarLote(qtd) {
+    for (let i = 0; i < qtd; i++) registrarChegada(`Lote_${qtd}`);
+  }
+
+  function desfazerChegada() {
+    if (!state.chegadas.length) return;
+    state.chegadas.pop();
+    state.chegadas.forEach((c, idx) => c.ordem_fifo = idx + 1);
+    saveState();
+  }
+
+  function iniciarLeituraQR() {
+    const now = Date.now();
+    if (!state.sessao_inicio_ms) state.sessao_inicio_ms = now;
+    state.atendimento_em_curso_ms = now;
+    if (navigator.vibrate) navigator.vibrate(40);
+    saveState();
+  }
+
+  function finalizarAtendimento(obs, passouCatraca = true) {
+    if (!state.atendimento_em_curso_ms) return;
+    const fim = Date.now();
+    const inicio = state.atendimento_em_curso_ms;
+    if (fim < inicio) return;
+
+    const duracao_total_s = ((fim - inicio) / 1000).toFixed(3);
+
+    state.catraca.push({
+      id_unico: state.next_id_catraca++,
+      ordem_atendimento: state.catraca.length + 1,
+      inicio_iso: new Date(inicio).toISOString(),
+      fim_iso: new Date(fim).toISOString(),
+      inicio_horario: formatTime(inicio),
+      fim_horario: formatTime(fim),
+      inicio_ms: inicio,
+      fim_ms: fim,
+      tempo_servico_s: duracao_total_s,
+      passou_catraca: passouCatraca,
+      n0_inicial: state.n0,
+      sessao_inicio_ms: state.sessao_inicio_ms,
+      sessao_fim_ms: state.sessao_fim_ms || '',
+      obs: obs
+    });
+
+    state.atendimento_em_curso_ms = null;
+    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+    saveState();
+  }
+
+  function desfazerCatraca() {
+    if (state.atendimento_em_curso_ms) {
+      if (!confirm('Cancelar a leitura de QR Code atual?')) return;
+      state.atendimento_em_curso_ms = null;
+      saveState();
+      return;
+    }
+    if (state.catraca.length > 0) {
+      if (!confirm('Apagar o último registo concluído?')) return;
+      state.catraca.pop();
+      state.catraca.forEach((a, idx) => a.ordem_atendimento = idx + 1);
+      saveState();
+    }
+  }
+
+  function registrarOcorrencia() {
+    const now = Date.now();
+    const tipo = document.getElementById('tipo_ocorrencia').value;
+    let delta = parseInt(document.getElementById('delta_fila').value || 0);
+    if (tipo === 'Desistencia_Fila' && delta === 0) delta = -1;
+    if (tipo === 'Furou_Fila' && delta === 0) delta = 1;
+    const detalhe = document.getElementById('detalhe_ocorrencia').value.trim() || 'Sem detalhes';
+
+    state.ocorrencias.push({
+      id_ocorrencia: state.next_id_ocorrencia++,
+      horario_local: formatTime(now),
+      epoch_ms: now,
+      tipo: tipo,
+      delta_fila: delta,
+      detalhe: detalhe
+    });
+
+    document.getElementById('detalhe_ocorrencia').value = '';
+    document.getElementById('delta_fila').value = '0';
+    saveState();
+  }
+
+  function renderUI() {
+    document.getElementById('count-chegadas').innerText = state.chegadas.length;
+    document.getElementById('last-chegada').innerText = state.chegadas.length
+      ? state.chegadas[state.chegadas.length - 1].horario_local.split('.')[0]
+      : '--:--:--';
+    document.getElementById('count-catraca').innerText = state.catraca.length;
+    document.getElementById('count-ocorrencias').innerText = state.ocorrencias.length;
+
+    const emCurso = Boolean(state.atendimento_em_curso_ms);
+    document.getElementById('btn-inicio-qr').disabled = emCurso;
+    document.querySelectorAll('.fim-btn').forEach(b => b.disabled = !emCurso);
+
+    const statusEl = document.getElementById('status-catraca');
+    const subStatusEl = document.getElementById('sub-status-catraca');
+    if (emCurso) {
+      statusEl.innerText = 'LENDO QR...';
+      statusEl.style.color = '#10b981';
+    } else {
+      statusEl.innerText = 'LIVRE';
+      statusEl.style.color = '#f59e0b';
+      subStatusEl.innerText = 'Aguardando no leitor';
+    }
+
+    document.getElementById('log-chegadas').innerHTML = state.chegadas.slice(-12).reverse().map(c =>
+      `<div class="log-item"><span>FIFO #${c.ordem_fifo} [${c.obs}]</span><span>${c.horario_local}</span></div>`
+    ).join('');
+
+    document.getElementById('log-catraca').innerHTML = state.catraca.slice(-12).reverse().map(a =>
+      `<div class="log-item"><span>#${a.ordem_atendimento} [${a.tempo_servico_s}s] ${a.passou_catraca ? '➔ Entrou' : '➔ ❌ Saiu'}</span><span>${a.obs}</span></div>`
+    ).join('');
+
+    document.getElementById('log-ocorrencias').innerHTML = state.ocorrencias.slice(-10).reverse().map(o =>
+      `<div class="log-item"><span>${o.horario_local} | ${o.tipo} (Δ=${o.delta_fila})</span><span>${o.detalhe}</span></div>`
+    ).join('');
+  }
+
+  function escapeCSVField(val) {
+    if (val === null || val === undefined) return '';
+    const str = String(val);
+    return /[",\n\r]/.test(str) ? '"' + str.replace(/"/g, '""') + '"' : str;
+  }
+
+  function downloadBlobCSV(dados, prefixo) {
+    if (!dados || !dados.length) { alert(`Sem dados em ${prefixo}!`); return; }
+    const headers = Object.keys(dados[0]).map(escapeCSVField).join(',');
+    const rows = dados.map(obj => Object.values(obj).map(escapeCSVField).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + headers + '\n' + rows], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `ru_${prefixo}_${new Date().toISOString().slice(0,10)}.csv`;
+    link.click();
+  }
+
+  function exportCSV(tipo) {
+    if (tipo === 'chegadas') downloadBlobCSV(state.chegadas, 'chegadas');
+    else if (tipo === 'catraca') downloadBlobCSV(state.catraca, 'catraca');
+    else if (tipo === 'ocorrencias') downloadBlobCSV(state.ocorrencias, 'ocorrencias');
+  }
+
+  function exportCSVPareadoLocal() {
+    const n0 = state.n0;
+    const catPosN0 = state.catraca.slice(n0);
+    const totalPareados = Math.min(state.chegadas.length, catPosN0.length);
+    if (totalPareados <= 0) { alert(`Sem registos suficientes pós-N₀ (${n0}).`); return; }
+    const pareados = [];
+    for (let i = 0; i < totalPareados; i++) {
+      const c = state.chegadas[i];
+      const a = catPosN0[i];
+      pareados.push({
+        ordem_aluno_fifo: i + 1,
+        ordem_atendimento_catraca: a.ordem_atendimento,
+        chegada_horario: c.horario_local,
+        inicio_qr_horario: a.inicio_horario,
+        saida_catraca_horario: a.fim_horario,
+        chegada_ms: c.epoch_ms,
+        inicio_ms: a.inicio_ms,
+        fim_ms: a.fim_ms,
+        tempo_espera_fila_Wq_s: Math.max(0, (a.inicio_ms - c.epoch_ms) / 1000).toFixed(3),
+        tempo_servico_S_s: ((a.fim_ms - a.inicio_ms) / 1000).toFixed(3),
+        tempo_total_sistema_W_s: ((a.fim_ms - c.epoch_ms) / 1000).toFixed(3),
+        obs_qr: a.obs,
+        passou_catraca: a.passou_catraca
+      });
+    }
+    downloadBlobCSV(pareados, 'pareado_fifo');
+  }
+
+  function limparDados(tipo) {
+    if (!confirm(`Confirmar limpeza de: ${tipo.toUpperCase()}?`)) return;
+    if (tipo === 'chegadas') { state.chegadas = []; state.next_id_chegada = 1; }
+    else if (tipo === 'catraca') { state.catraca = []; state.atendimento_em_curso_ms = null; state.next_id_catraca = 1; }
+    else if (tipo === 'ocorrencias') { state.ocorrencias = []; state.next_id_ocorrencia = 1; }
+    else if (tipo === 'tudo') {
+      state = {
+        sessao_inicio_ms: null, sessao_fim_ms: null, n0: 0, posto: 'Fila_Posto1',
+        next_id_chegada: 1, next_id_catraca: 1, next_id_ocorrencia: 1,
+        atendimento_em_curso_ms: null, chegadas: [], catraca: [], ocorrencias: []
+      };
+      document.getElementById('n0_input').value = 0;
+    }
+    saveState();
+  }
+
+  renderUI();
+</script>
+</body>
+</html>
